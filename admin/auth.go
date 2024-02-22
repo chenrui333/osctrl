@@ -19,7 +19,7 @@ const (
 // Using the default name for the cookie in SAML:
 // https://github.com/crewjam/saml/blob/main/samlsp/session_cookie.go#L11
 const (
-	authCookieName = "token"
+	authCookieName = "osctrl"
 )
 
 // Handler to check access to a resource based on the authentication enabled
@@ -51,7 +51,7 @@ func handlerAuthCheck(h http.Handler) http.Handler {
 			}
 			cookiev, err := r.Cookie(authCookieName)
 			if err != nil {
-				log.Printf("error extracting JWT data: %v", err)
+				log.Printf("error extracting cookie: %v", err)
 				http.Redirect(w, r, samlConfig.LoginURL, http.StatusFound)
 				return
 			}
