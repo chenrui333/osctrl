@@ -82,7 +82,7 @@ func handlerAuthCheck(h http.Handler) http.Handler {
 					return
 				}
 				// Create new session
-				session, err = sessionsmgr.Save(r, w, u, access, sessions.SessionTypeDB)
+				session, err = sessionsmgr.Save(r, w, u, access, sessions.SessionTypeSAML)
 				if err != nil {
 					log.Printf("session error: %v", err)
 					http.Redirect(w, r, samlConfig.LoginURL, http.StatusFound)
