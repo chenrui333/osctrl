@@ -19,7 +19,7 @@ const (
 // Using the default name for the cookie in SAML:
 // https://github.com/crewjam/saml/blob/main/samlsp/session_cookie.go#L11
 const (
-	authCookieName = "osctrl"
+	authCookieName = "token"
 )
 
 // Handler to check access to a resource based on the authentication enabled
@@ -28,7 +28,7 @@ func handlerAuthCheck(h http.Handler) http.Handler {
 		switch adminConfig.Auth {
 		case settings.AuthDB:
 			// Check if user is already authenticated
-			authenticated, session := sessionsmgr.CheckAuth(r)
+			authenticated, session := sessionsmgr.CheckAuth(r, sessions.SessionTypeDB)
 			if !authenticated {
 				http.Redirect(w, r, loginPath, http.StatusFound)
 				return
@@ -49,20 +49,19 @@ func handlerAuthCheck(h http.Handler) http.Handler {
 			if err != nil {
 				log.Printf("GetSession %v", err)
 			}
-			cookiev, err := r.Cookie(authCookieName)
-			if err != nil {
-				log.Printf("error extracting cookie: %v", err)
-				http.Redirect(w, r, samlConfig.LoginURL, http.StatusFound)
-				return
+			var jwtdata JWTData
+			for _, c := range r.Cookies() {
+				jwtdata, err = parseJWTFromCookie(samlData.KeyPair, c.Value)
+				if err == nil {
+					break
+				}
 			}
-			jwtdata, err := parseJWTFromCookie(samlData.KeyPair, cookiev.Value)
-			if err != nil {
-				log.Printf("error parsing JWT: %v", err)
+			if jwtdata.Username == "" {
 				http.Redirect(w, r, samlConfig.LoginURL, http.StatusFound)
 				return
 			}
 			// Check if user is already authenticated
-			authenticated, session := sessionsmgr.CheckAuth(r)
+			authenticated, session := sessionsmgr.CheckAuth(r, sessions.SessionTypeSAML)
 			if !authenticated {
 				// Create user if it does not exist
 				if !adminUsers.Exists(jwtdata.Username) {
@@ -83,7 +82,7 @@ func handlerAuthCheck(h http.Handler) http.Handler {
 					return
 				}
 				// Create new session
-				session, err = sessionsmgr.Save(r, w, u, access)
+				session, err = sessionsmgr.Save(r, w, u, access, sessions.SessionTypeDB)
 				if err != nil {
 					log.Printf("session error: %v", err)
 					http.Redirect(w, r, samlConfig.LoginURL, http.StatusFound)

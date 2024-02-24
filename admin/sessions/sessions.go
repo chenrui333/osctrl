@@ -46,6 +46,11 @@ const (
 	CtxSession = "session"
 )
 
+const (
+	SessionTypeDB   = "db"
+	SessionTypeSAML = "saml"
+)
+
 // sessionValues to keep session values
 type SessionValues map[interface{}]interface{}
 
@@ -58,12 +63,13 @@ type ContextKey string
 // UserSession as abstraction of a session
 type UserSession struct {
 	gorm.Model
-	Username  string
-	IPAddress string
-	UserAgent string
-	ExpiresAt time.Time
-	Cookie    string        `gorm:"index"`
-	Values    SessionValues `gorm:"-"`
+	Username    string
+	IPAddress   string
+	UserAgent   string
+	ExpiresAt   time.Time
+	SessionType string
+	Cookie      string        `gorm:"index"`
+	Values      SessionValues `gorm:"-"`
 }
 
 // CreateSessionManager creates a new session store in the DB and initialize the tables
@@ -91,12 +97,12 @@ func CreateSessionManager(db *gorm.DB, name, sKey string) *SessionManager {
 }
 
 // CheckAuth to verify if a session exists/is valid
-func (sm *SessionManager) CheckAuth(r *http.Request) (bool, UserSession) {
+func (sm *SessionManager) CheckAuth(r *http.Request, sessionType string) (bool, UserSession) {
 	cookie, err := r.Cookie(sm.CookieName)
 	if err != nil {
 		return false, UserSession{}
 	}
-	s, err := sm.Get(cookie.Value)
+	s, err := sm.Get(cookie.Value, sessionType)
 	if err != nil {
 		return false, UserSession{}
 	}
@@ -104,9 +110,9 @@ func (sm *SessionManager) CheckAuth(r *http.Request) (bool, UserSession) {
 }
 
 // Get returns a non-expired existing session for the given cookie
-func (sm *SessionManager) Get(cookie string) (UserSession, error) {
+func (sm *SessionManager) Get(cookie, sessionType string) (UserSession, error) {
 	var s UserSession
-	if err := sm.db.Where("cookie = ?", cookie).Where("expires_at > ?", time.Now().Local()).First(&s).Error; err != nil {
+	if err := sm.db.Where("session_type = ?", sessionType).Where("cookie = ?", cookie).Where("expires_at > ?", time.Now().Local()).First(&s).Error; err != nil {
 		return s, err
 	}
 	if err := securecookie.DecodeMulti(sm.CookieName, cookie, &s.Values, sm.Codecs...); err != nil {
@@ -132,12 +138,13 @@ func (sm *SessionManager) GetByUsername(username string) ([]UserSession, error) 
 }
 
 // New creates a session with name without adding it to the registry.
-func (sm *SessionManager) New(r *http.Request, username, level string) (UserSession, error) {
+func (sm *SessionManager) New(r *http.Request, username, level, sessionType string) (UserSession, error) {
 	session := UserSession{
-		Username:  username,
-		IPAddress: utils.GetIP(r),
-		UserAgent: r.Header.Get(utils.UserAgent),
-		ExpiresAt: time.Now().Add(time.Duration(defaultMaxAge) * time.Second),
+		Username:    username,
+		IPAddress:   utils.GetIP(r),
+		UserAgent:   r.Header.Get(utils.UserAgent),
+		ExpiresAt:   time.Now().Add(time.Duration(defaultMaxAge) * time.Second),
+		SessionType: sessionType,
 	}
 	values := make(SessionValues)
 	values["auth"] = true
@@ -157,9 +164,9 @@ func (sm *SessionManager) New(r *http.Request, username, level string) (UserSess
 }
 
 // Destroy session expires it and it will be cleaned up
-func (sm *SessionManager) Destroy(r *http.Request) error {
+func (sm *SessionManager) Destroy(r *http.Request, sessionType string) error {
 	if cookie, err := r.Cookie(sm.CookieName); err == nil {
-		s, err := sm.Get(cookie.Value)
+		s, err := sm.Get(cookie.Value, sessionType)
 		if err != nil {
 			return err
 		}
@@ -171,17 +178,17 @@ func (sm *SessionManager) Destroy(r *http.Request) error {
 }
 
 // Save session and set cookie header
-func (sm *SessionManager) Save(r *http.Request, w http.ResponseWriter, user users.AdminUser, access users.EnvAccess) (UserSession, error) {
+func (sm *SessionManager) Save(r *http.Request, w http.ResponseWriter, user users.AdminUser, access users.EnvAccess, sessionType string) (UserSession, error) {
 	var s UserSession
 	if cookie, err := r.Cookie(sm.CookieName); err != nil {
-		s, err = sm.New(r, user.Username, LevelPermissions(user, access))
+		s, err = sm.New(r, user.Username, LevelPermissions(user, access), sessionType)
 		if err != nil {
 			return s, err
 		}
 	} else {
-		s, err = sm.Get(cookie.Value)
+		s, err = sm.Get(cookie.Value, sessionType)
 		if err != nil {
-			s, err = sm.New(r, user.Username, LevelPermissions(user, access))
+			s, err = sm.New(r, user.Username, LevelPermissions(user, access), sessionType)
 			if err != nil {
 				return s, err
 			}

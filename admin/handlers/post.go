@@ -45,7 +45,7 @@ func (h *HandlersAdmin) LoginPOSTHandler(w http.ResponseWriter, r *http.Request)
 		h.Inc(metricAdminErr)
 		return
 	}
-	_, err = h.Sessions.Save(r, w, user, envAccess)
+	_, err = h.Sessions.Save(r, w, user, envAccess, sessions.SessionTypeDB)
 	if err != nil {
 		adminErrorResponse(w, "session error", http.StatusForbidden, err)
 		h.Inc(metricAdminErr)
@@ -82,7 +82,7 @@ func (h *HandlersAdmin) LogoutPOSTHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	// Destroy existing session
-	if err := h.Sessions.Destroy(r); err != nil {
+	if err := h.Sessions.Destroy(r, sessions.SessionTypeDB); err != nil {
 		adminErrorResponse(w, "error destroying session", http.StatusInternalServerError, err)
 		h.Inc(metricAdminErr)
 		return
