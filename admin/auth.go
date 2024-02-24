@@ -67,17 +67,33 @@ func handlerAuthCheck(h http.Handler) http.Handler {
 			// Check if user is already authenticated
 			activeSession, err := sessionsmgr.Get(activeCookie.Value, sessions.SessionTypeSAML)
 			if err != nil {
-				http.Redirect(w, r, samlConfig.LoginURL, http.StatusFound)
-				return
+				if !adminUsers.Exists(jwtdata.Username) {
+					log.Printf("user not found: %s", jwtdata.Username)
+					http.Redirect(w, r, forbiddenPath, http.StatusFound)
+					return
+				}
+				u, err := adminUsers.Get(jwtdata.Username)
+				if err != nil {
+					log.Printf("error getting user %s: %v", jwtdata.Username, err)
+					http.Redirect(w, r, forbiddenPath, http.StatusFound)
+					return
+				}
+				access, err := adminUsers.GetEnvAccess(u.Username, u.DefaultEnv)
+				if err != nil {
+					log.Printf("error getting access for %s: %v", jwtdata.Username, err)
+					http.Redirect(w, r, forbiddenPath, http.StatusFound)
+					return
+				}
+				// Create new session
+				activeSession, err = sessionsmgr.Save(r, w, u, access, sessions.SessionTypeSAML)
+				if err != nil {
+					log.Printf("session error: %v", err)
+					http.Redirect(w, r, samlConfig.LoginURL, http.StatusFound)
+					return
+				}
 			}
 			// Check if active session matches with the JWT
 			if activeSession.Username != jwtdata.Username {
-				http.Redirect(w, r, forbiddenPath, http.StatusFound)
-				return
-			}
-			// Check if user exists
-			if !adminUsers.Exists(jwtdata.Username) {
-				log.Printf("user not found: %s", jwtdata.Username)
 				http.Redirect(w, r, forbiddenPath, http.StatusFound)
 				return
 			}
