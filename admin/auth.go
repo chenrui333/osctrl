@@ -107,7 +107,6 @@ func handlerAuthCheck(h http.Handler) http.Handler {
 			if err != nil {
 				log.Printf("error updating metadata for user %s: %v", activeSession.Username, err)
 			}
-			log.Printf("CSRF for user %s is %s", activeSession.Username, s[sessions.CtxCSRF])
 			// Access granted
 			samlMiddleware.RequireAccount(h).ServeHTTP(w, r.WithContext(ctx))
 		}
